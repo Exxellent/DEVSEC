@@ -803,18 +803,15 @@ Return Value:
 
         if (RtlEqualUnicodeString(&required_extension, &extension, TRUE))
         {
-            if (Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
+            if (Data->Iopb->MajorFunction == IRP_MJ_WRITE && !(Data->Flags & FLTFL_CALLBACK_DATA_IRP_OPERATION)) {
+                Data->Flags |= FLTFL_CALLBACK_DATA_IRP_OPERATION;
                 //здесь - шифрование Data->Iopb->Parameters.Write.WriteBuffer
                 DbgPrint("*** PtPostOperationPassThrough() --- WRITE");
                 //DbgPrint(Data->Iopb->Parameters.Write.WriteBuffer);
-                DbgPrint("*** Writing...");
-
                 uint8_t plainText[1024];
                 memset(plainText, 0, 1024);
-                for (int i = 0; i < strlen(Data->Iopb->Parameters.Write.WriteBuffer); i++)
-                {
-                    plainText[i] = (uint8_t)((char*)Data->Iopb->Parameters.Write.WriteBuffer)[i];
-                }
+                memcpy(plainText, Data->Iopb->Parameters.Read.ReadBuffer, 1024);
+
 
                 unsigned char keyChar[] = "cdaeb1282d614772beb1e74c192bebda";
                 uint8_t* key = (uint8_t*)keyChar;
@@ -828,29 +825,20 @@ Return Value:
                 AES_init_ctx_iv(&ctx, key, iv);
                 DbgPrint("*** Encrypt...");
                 AES_CBC_encrypt_buffer(&ctx, plainText, 1024);
+                memcpy(Data->Iopb->Parameters.Read.ReadBuffer, plainText, 1024);
 
-                DbgPrint("*** chiprText %s", plainText);
-
-                for (int i = 0; i < 1024; i++)
-                {
-                    ((char*)Data->Iopb->Parameters.Write.WriteBuffer)[i] = plainText[i];
-                }
+                DbgPrint("*** End Writing");
 
             }
             else if (Data->Iopb->MajorFunction == IRP_MJ_READ && (int)Data->Iopb->Parameters.Read.Length != 1) {
-                //здесь - расшифровка Data->Iopb->Parameters.Read.ReadBuffer
                 DbgPrint("*** PtPostOperationPassThrough() --- READ");
-                //DbgPrint(Data->Iopb->Parameters.Read.ReadBuffer);
-
-                DbgPrint("*** reading...");
-
                 uint8_t plainText[1024];
                 memset(plainText, 0, 1024);
-                for (int i = 0; i < strlen(Data->Iopb->Parameters.Read.ReadBuffer); i++)
-                {
-                    plainText[i] = (uint8_t)((char*)Data->Iopb->Parameters.Read.ReadBuffer)[i];
-                }
 
+                // Копируем данные из буфера чтения во временный буфер
+                memcpy(plainText, Data->Iopb->Parameters.Read.ReadBuffer, 1024);
+
+                // Производим дешифрование на временном буфере
                 unsigned char keyChar[] = "cdaeb1282d614772beb1e74c192bebda";
                 uint8_t* key = (uint8_t*)keyChar;
 
@@ -860,20 +848,16 @@ Return Value:
                 struct AES_ctx ctx;
 
                 AES_init_ctx_iv(&ctx, key, iv);
-                DbgPrint("*** Decrypt... ");
                 AES_CBC_decrypt_buffer(&ctx, plainText, 1024);
-
-                DbgPrint("*** DecryptText %s", plainText);
-
-                for (int i = 0; i < 1024; i++)
-                {
-                    ((char*)Data->Iopb->Parameters.Read.ReadBuffer)[i] = plainText[i];
-                }
-                DbgPrint("*** End Reading");
+                DbgPrint("DECRYPT TEXT");
+                DbgPrint(plainText);
+                // Копируем расшифрованные данные обратно в буфер чтения
+                memcpy(Data->Iopb->Parameters.Read.ReadBuffer, plainText, 1024);
             }
         }
 
     }
+    Data->Flags &= ~FLTFL_CALLBACK_DATA_IRP_OPERATION;
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
 

@@ -36,9 +36,4 @@
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="aes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
 </Project>
